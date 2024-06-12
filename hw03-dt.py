@@ -1,5 +1,5 @@
-from sklearn.linear_model import LogisticRegression #邏輯式迴歸
 from sklearn.model_selection import  train_test_split
+from sklearn.tree import DecisionTreeClassifier
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
@@ -18,14 +18,10 @@ def plot_decision_regions(X, y, classifier, test_idx=None, resolution=0.02):
     # plot the decision surface
     x1_min, x1_max = X[:, 0].min() - 1, X[:, 0].max() + 1
     x2_min, x2_max = X[:, 1].min() - 1, X[:, 1].max() + 1
-
-
     xx1, xx2 = np.meshgrid(np.arange(x1_min, x1_max, resolution),
                            np.arange(x2_min, x2_max, resolution))
     Z = classifier.predict(np.array([xx1.ravel(), xx2.ravel()]).T)
     Z = Z.reshape(xx1.shape)
-
-    
     plt.contourf(xx1, xx2, Z, alpha=0.3, cmap=cmap)
     plt.xlim(xx1.min(), xx1.max())
     plt.ylim(xx2.min(), xx2.max())
@@ -64,7 +60,7 @@ def plot_decision_regions(X, y, classifier, test_idx=None, resolution=0.02):
                         linewidth=1,
                         marker='o',
                         s=100, 
-                        label='test set')        
+                        label='test set')         
             
 
 file_path = "best_buy_laptops_2024.csv"
@@ -89,45 +85,42 @@ df['features/1/description_encoded'] = label_encoder.fit_transform(df['features/
 data=df.drop(columns=['features/1/description','features/0/description','model','brand'])
 
 
-# 將顧客滿意度分為五類
-df['satisfaction_level'] = pd.cut(df['aggregateRating/ratingValue'], bins=[0, 1, 2, 3, 4, 5], labels=['非常不满意', '不满意', '普通', '满意', '非常满意'])
+# 將顧客滿意度分為三類
+df['satisfaction_level'] = pd.cut(df['aggregateRating/ratingValue'], bins=[-1, 3, 4, 5], labels=['low','medium','high'], right=False)
+
 df.dropna(inplace=True)
 
-mapping = {    '非常不满意': 1,
-    '不满意': 2,
-    '普通': 3,
-    '满意': 4,
-    '非常满意': 5
+mapping = {    'low': 1,
+    'medium': 2,
+    'high': 3
 }
 data = df[['brand_encoded','model_encoded','satisfaction_level']].replace(mapping)
-to_drop = (data['satisfaction_level'] != 1) & (data['satisfaction_level'] != 5)
 
-# 使用布林索引選擇需要保留的行
-filtered_data = data[~to_drop]
-
-X = filtered_data[['brand_encoded','model_encoded']]
-y = filtered_data['satisfaction_level']
+X = data[['brand_encoded','model_encoded']]
+y = data['satisfaction_level']
 
 scaler = StandardScaler()
 standard_x= scaler.fit_transform(X)
 
 norm_data=pd.concat([X,y] , axis=1)
 x_train, x_test, y_train, y_test=train_test_split( X ,y,test_size=0.2,random_state=42)
-
-# 模型初始化
-lr = LogisticRegression(C=100.0 , random_state=1,solver='lbfgs',multi_class='ovr')
-lr.fit(x_train, y_train)
-y_pred = lr.predict(x_test)
-
-X_values = np.array(X,dtype=float)
-y_values = np.array(y,dtype=float)
+y_combined = np.hstack((y_train, y_test))
 
 
-plot_decision_regions(X_values, y_values, 
-                      classifier=lr, 
-                      test_idx=range(len(x_train), len(X)))
-plt.xlabel('Feature 1')
-plt.ylabel('Feature 2')
+X_combined = np.vstack((x_train, x_test))
+y_combined = np.hstack((y_train, y_test))
+
+dt = DecisionTreeClassifier(criterion='gini', 
+                                max_depth=4, 
+                                random_state=1)
+dt.fit(x_train, y_train)
+plot_decision_regions(X_combined, y_combined, 
+                      classifier=dt,
+                      test_idx=range(105, 150))
+
+plt.xlabel('brand&model ')
+plt.ylabel('satisfaction_level ')
 plt.legend(loc='upper left')
 plt.tight_layout()
 plt.show()
+
