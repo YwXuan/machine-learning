@@ -2,9 +2,11 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_auc_score, roc_curve
+from sklearn.model_selection import learning_curve
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-file_path = 'processed_dataset.csv'
+file_path = 'Final\processed_dataset.csv'
 data = pd.read_csv(file_path)
 features = ['brand', 'aggregateRating/reviewCount', 'offers/price', 'depth', 'width']
 target = 'aggregateRating/ratingValue'
@@ -47,4 +49,41 @@ plt.legend(loc='upper left')
 plt.hlines(y=0, xmin=min(min(y_train_pred)-0.5, min(y_test_pred))-0.5, xmax=max(max(y_train_pred)+0.5, max(y_test_pred)+0.5), color='black', lw=2)
 plt.xlim([min(min(y_train_pred)-0.5, min(y_test_pred))-0.5, max(max(y_train_pred)+0.5, max(y_test_pred)+0.5)])
 plt.tight_layout()
+plt.show()
+
+# 繪製學習曲線
+def plot_learning_curve(estimator, title, X, y, ylim=None, cv=None,
+                        n_jobs=-1, train_sizes=np.linspace(.1, 1.0, 5)):
+    plt.figure()
+    plt.title(title)
+    if ylim is not None:
+        plt.ylim(*ylim)
+    plt.xlabel("Training examples")
+    plt.ylabel("Score")
+    train_sizes, train_scores, test_scores = learning_curve(
+        estimator, X, y, cv=cv, n_jobs=n_jobs, train_sizes=train_sizes)
+    train_scores_mean = np.mean(train_scores, axis=1)
+    train_scores_std = np.std(train_scores, axis=1)
+    test_scores_mean = np.mean(test_scores, axis=1)
+    test_scores_std = np.std(test_scores, axis=1)
+    plt.grid()
+
+    plt.fill_between(train_sizes, train_scores_mean - train_scores_std,
+                     train_scores_mean + train_scores_std, alpha=0.1,
+                     color="r")
+    plt.fill_between(train_sizes, test_scores_mean - test_scores_std,
+                     test_scores_mean + test_scores_std, alpha=0.1, color="g")
+    plt.plot(train_sizes, train_scores_mean, 'o-', color="r",
+             label="Training score")
+    plt.plot(train_sizes, test_scores_mean, 'o-', color="g",
+             label="Cross-validation score")
+
+    plt.legend(loc="best")
+    return plt
+
+# 繪製學習曲線
+title = "Learning Curves (Decision Tree)"
+cv = 5
+plot_learning_curve(clf, title, X_train, y_train, cv=cv, n_jobs=-1)
+
 plt.show()

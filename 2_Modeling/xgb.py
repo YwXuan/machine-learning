@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, learning_curve
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, roc_curve, auc
 import matplotlib.pyplot as plt
@@ -44,6 +44,7 @@ plt.title('ROC Curve')
 plt.legend(loc='best')
 plt.show()
 
+# 繪製殘差圖
 y_train_pred = xgb.predict(X_train)
 y_test_pred = xgb.predict(X_test)
 
@@ -56,4 +57,29 @@ plt.legend(loc='upper left')
 plt.hlines(y=0, xmin=min(min(y_train_pred)-0.5, min(y_test_pred))-0.5, xmax=max(max(y_train_pred)+0.5, max(y_test_pred)+0.5), color='black', lw=2)
 plt.xlim([min(min(y_train_pred)-0.5, min(y_test_pred))-0.5, max(max(y_train_pred)+0.5, max(y_test_pred)+0.5)])
 plt.tight_layout()
+plt.show()
+
+# 繪製學習曲線
+train_sizes, train_scores, test_scores = learning_curve(xgb, X, y, cv=5, scoring='accuracy', 
+                                                        n_jobs=-1, train_sizes=np.linspace(0.1, 1.0, 10))
+
+train_scores_mean = np.mean(train_scores, axis=1)
+train_scores_std = np.std(train_scores, axis=1)
+test_scores_mean = np.mean(test_scores, axis=1)
+test_scores_std = np.std(test_scores, axis=1)
+
+plt.figure(figsize=(10, 7))
+plt.plot(train_sizes, train_scores_mean, 'o-', color='r', label='Training score')
+plt.plot(train_sizes, test_scores_mean, 'o-', color='g', label='Cross-validation score')
+
+plt.fill_between(train_sizes, train_scores_mean - train_scores_std, train_scores_mean + train_scores_std,
+                  alpha=0.1, color='r')
+plt.fill_between(train_sizes, test_scores_mean - test_scores_std, test_scores_mean + test_scores_std,
+                  alpha=0.1, color='g')
+
+plt.title('Learning Curve')
+plt.xlabel('Training')
+plt.ylabel('Score')
+plt.legend(loc='best')
+plt.grid()
 plt.show()

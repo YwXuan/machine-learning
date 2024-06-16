@@ -1,179 +1,113 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.linear_model import LinearRegression, Lasso, Ridge, ElasticNet
+import numpy as np
+from sklearn.linear_model import Ridge, LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBRegressor
 from sklearn.svm import SVR
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-import xgboost as xgb
-from catboost import CatBoostRegressor
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, PolynomialFeatures
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 
-# 讀取CSV資料
-file_path = 'processed_dataset.csv'
-data = pd.read_csv(file_path)
+# 读取数据
+data = pd.read_csv('final2/1_descriptive_statistics/best_buy_laptops_2024.csv')
+print("原始数据缺失值数量:")
+print(data.isnull().sum())
 
-# 指定特徵和標籤列
-features = ['brand', 'aggregateRating/reviewCount', 'offers/price', 'depth', 'width']
-target = 'aggregateRating/ratingValue'
+# 處理缺失值
+data = data.fillna(data.mean(numeric_only=True).round(2))
 
-# 分離特徵和標籤
-X = data[features]
-y = data[target]
+# 移除不需要的列
+columns_to_drop = ['offers/priceCurrency', 'model', 'features/0/description', 'features/1/description']
+data_processed = data.drop(columns=columns_to_drop)
+print("處理後数据缺失值数量:")
+print(data_processed.isnull().sum())
 
-# 分割資料集為訓練集和測試集
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# 類別特徵轉換
+brand_map = {'Acer': 1, 'Alienware': 2, 'ASUS': 3, 'Dell': 4, 'GIGABYTE': 5, 'HP': 6, 'HP OMEN': 7, 'Lenovo': 8, 'LG': 9, 'Microsoft': 10, 'MSI': 11, 'Razer': 12, 'Samsung': 13, 'Thomson': 14}
+data_processed['brand'] = data_processed['brand'].map(brand_map)
 
-# 類別特徵與數值特徵分離
-categorical_features = ['brand']
-numerical_features = ['aggregateRating/reviewCount', 'offers/price', 'depth', 'width']
+# 特徵縮放
+scaler = StandardScaler()
+numeric_features = ['aggregateRating/reviewCount', 'offers/price', 'depth', 'width']
+data_processed[numeric_features] = scaler.fit_transform(data_processed[numeric_features])
 
-# 構建預處理管道，增加多項式特徵
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', Pipeline([
-            ('scaler', StandardScaler()),
-            ('poly', PolynomialFeatures(degree=2, include_bias=False))
-        ]), numerical_features),
-        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
-    ])
+# 假设 'rating' 是你的目標變量
+X = data_processed.drop(columns=['aggregateRating/ratingValue'])
+y = data_processed['aggregateRating/ratingValue']
 
-# 定義模型
+# 數據分割成訓練集和測試集
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=419)
+
+# 定義模型函数
+def grid_search_cv(model, param_grid, X_train, y_train):
+    grid_search = GridSearchCV(model, param_grid, cv=5, scoring='r2')
+    grid_search.fit(X_train, y_train)
+    return grid_search.best_estimator_
+
+# 初始化模型
+linear_regression = LinearRegression()
+ridge = Ridge()
+random_forest = RandomForestRegressor(random_state=419)
+xgboost = XGBRegressor(random_state=419)
+svr = SVR()
+
+# 调参和訓練模型
+linear_regression.fit(X_train, y_train)  # 線性回歸不需要调参
+
+ridge_param_grid = {'alpha': [0.1, 1, 10, 100]}
+ridge = grid_search_cv(Ridge(), ridge_param_grid, X_train, y_train)
+
+random_forest_param_grid = {'n_estimators': [100, 200], 'max_depth': [10, 20, 30]}
+random_forest = grid_search_cv(RandomForestRegressor(random_state=419), random_forest_param_grid, X_train, y_train)
+
+xgboost_param_grid = {'n_estimators': [100, 200], 'max_depth': [3, 6, 9], 'learning_rate': [0.01, 0.1, 0.3]}
+xgboost = grid_search_cv(XGBRegressor(random_state=419), xgboost_param_grid, X_train, y_train)
+
+svr_param_grid = {'C': [0.1, 1, 10, 100], 'gamma': ['scale', 'auto']}
+svr = grid_search_cv(SVR(), svr_param_grid, X_train, y_train)
+
+# 定義模型组合并訓練
 models = {
-    'Linear Regression': LinearRegression(),
-    'Lasso': Lasso(),
-    'Ridge': Ridge(),
-    'ElasticNet': ElasticNet(),
-    'SVR': SVR(),
-    'Random Forest': RandomForestRegressor(),
-    'Gradient Boosting': GradientBoostingRegressor(),
-    'XGBoost': xgb.XGBRegressor(),
-    'CatBoost': CatBoostRegressor(verbose=0)
+    "Linear Regression": linear_regression,
+    "Ridge": ridge,
+    "RandomForest": random_forest,
+    "XGBoost": xgboost,
+    "SVR": svr
 }
 
-# 訓練和評估模型
-results = {}
-residuals = {}
-short_names = {
-    'Linear Regression': 'LR',
-    'Lasso': 'Lasso',
-    'Ridge': 'Ridge',
-    'ElasticNet': 'ElasticNet',
-    'SVR': 'SVR',
-    'Random Forest': 'RF',
-    'Gradient Boosting': 'GB',
-    'XGBoost': 'XGB',
-    'CatBoost': 'CatB'
-}
+# 評估模型並繪製殘差圖
+fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(15, 15))
+axes = axes.flatten()
 
-for name, model in models.items():
-    # 構建管道
-    pipeline = Pipeline(steps=[('preprocessor', preprocessor), ('model', model)])
+for idx, (name, model) in enumerate(models.items()):
+    train_pred = model.predict(X_train)
+    test_pred = model.predict(X_test)
     
-    # 網格搜索超參數調整（僅適用於部分模型）
-    if name in ['Lasso', 'Ridge', 'ElasticNet', 'SVR', 'Random Forest', 'Gradient Boosting', 'XGBoost', 'CatBoost']:
-        params = {
-            'Lasso': {'model__alpha': [0.01, 0.1, 1, 10, 100]},
-            'Ridge': {'model__alpha': [0.01, 0.1, 1, 10, 100]},
-            'ElasticNet': {'model__alpha': [0.01, 0.1, 1, 10, 100], 'model__l1_ratio': [0.2, 0.5, 0.8]},
-            'SVR': {'model__C': [0.1, 1, 10, 100], 'model__gamma': ['scale', 'auto']},
-            'Random Forest': {'model__n_estimators': [100, 200, 300], 'model__max_depth': [10, 20, 30]},
-            'Gradient Boosting': {'model__n_estimators': [100, 200, 300], 'model__learning_rate': [0.01, 0.1, 0.2]},
-            'XGBoost': {'model__n_estimators': [100, 200, 300], 'model__learning_rate': [0.01, 0.1, 0.2], 'model__max_depth': [3, 6, 9]},
-            'LightGBM': {'model__n_estimators': [100, 200, 300], 'model__learning_rate': [0.01, 0.1, 0.2], 'model__num_leaves': [31, 62, 127], 'model__max_depth': [-1, 10, 20]},
-            'CatBoost': {'model__iterations': [100, 200, 300], 'model__learning_rate': [0.01, 0.1, 0.2], 'model__depth': [3, 6, 9]}
-        }
-        grid = GridSearchCV(pipeline, params[name], cv=5, n_jobs=-1)
-        grid.fit(X_train, y_train)
-        pipeline = grid.best_estimator_
-    else:
-        pipeline.fit(X_train, y_train)
+    train_mse = mean_squared_error(y_train, train_pred)
+    train_r2 = r2_score(y_train, train_pred)
+    test_mse = mean_squared_error(y_test, test_pred)
+    test_r2 = r2_score(y_test, test_pred)
     
-    # 預測
-    y_pred = pipeline.predict(X_test)
+    print(f"{name} - Train MSE: {train_mse}")
+    print(f"{name} - Train R^2: {train_r2}")
+    print(f"{name} - Test MSE: {test_mse}")
+    print(f"{name} - Test R^2: {test_r2}")
     
-    # 確保預測結果為一維數組
-    if y_pred.ndim > 1:
-        y_pred = y_pred.ravel()
-    
-    # 計算殘差
-    residuals[short_names[name]] = y_test - y_pred
-    
-    # 評估指標
-    mse = mean_squared_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
-    
-    results[short_names[name]] = {'MSE': mse, 'R^2': r2}
-    print(f"{name} - MSE: {mse}, R^2: {r2}")
+    # 繪製殘差圖
+    residuals = y_test - test_pred
+    axes[idx].scatter(test_pred, residuals, label='Test Data')
+    axes[idx].scatter(train_pred, y_train - train_pred, label='Train Data', alpha=0.5)
+    axes[idx].hlines(y=0, xmin=min(test_pred), xmax=max(test_pred), colors='r', linestyles='--')
+    axes[idx].set_title(f"{name} Residuals")
+    axes[idx].set_xlabel("Predicted")
+    axes[idx].set_ylabel("Residuals")
+    axes[idx].legend()
 
-# 結果可視化
-models_names = list(results.keys())
-mse_values = [results[name]['MSE'] for name in models_names]
-r2_values = [results[name]['R^2'] for name in models_names]
+# 移除多餘的子圖
+if len(models) < len(axes):
+    for j in range(len(models), len(axes)):
+        fig.delaxes(axes[j])
 
-plt.figure(figsize=(14, 6))
-
-# MSE圖
-plt.subplot(1, 2, 1)
-plt.bar(models_names, mse_values, color='skyblue')
-plt.title('Mean Squared Error (MSE)')
-plt.ylabel('MSE')
-plt.xlabel('Model')
-
-# R^2圖
-plt.subplot(1, 2, 2)
-plt.bar(models_names, r2_values, color='lightgreen')
-plt.title('R^2 Score')
-plt.ylabel('R^2')
-plt.xlabel('Model')
-
-plt.tight_layout()
-plt.show()
-
-# 殘差圖 - 第一頁
-plt.figure(figsize=(15, 10))
-for i, (name, residual) in enumerate(list(residuals.items())[:6], 1):
-    plt.subplot(3, 2, i)
-    plt.scatter(y_test, residual)
-    plt.axhline(0, color='red', linestyle='--', lw=2)
-    plt.title(f'{name} Residuals')
-    plt.xlabel('Actual Values')
-    plt.ylabel('Residuals')
-
-plt.tight_layout()
-plt.show()
-
-# 殘差圖 - 第二頁
-plt.figure(figsize=(15, 10))
-for i, (name, residual) in enumerate(list(residuals.items())[6:], 1):
-    plt.subplot(3, 2, i)
-    plt.scatter(y_test, residual)
-    plt.axhline(0, color='red', linestyle='--', lw=2)
-    plt.title(f'{name} Residuals')
-    plt.xlabel('Actual Values')
-    plt.ylabel('Residuals')
-
-plt.tight_layout()
-plt.show()
-
-plt.figure(figsize=(15, 7))
-plt.subplot(1, 2, 1)
-plt.scatter(range(len(y_train)), y_train, color='blue', alpha=0.5, label='Training data')
-plt.scatter(range(len(y_train)), pipeline.predict(X_train), color='red', alpha=0.5, label='Training prediction')
-plt.xlabel('Index')
-plt.ylabel('Rating Value')
-plt.title('Training Data vs. Prediction')
-plt.legend()
-
-plt.subplot(1, 2, 2)
-plt.scatter(range(len(y_test)), y_test, color='blue', alpha=0.5, label='Test data')
-plt.scatter(range(len(y_test)), y_pred, color='red', alpha=0.5, label='Test prediction')
-plt.xlabel('Index')
-plt.ylabel('Rating Value')
-plt.title('Test Data vs. Prediction')
-plt.legend()
-
-plt.tight_layout()
+plt.tight_layout(pad=5.0)  # 增加子圖之間的間距
 plt.show()

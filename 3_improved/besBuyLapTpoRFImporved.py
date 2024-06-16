@@ -1,49 +1,41 @@
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import numpy as np 
-import matplotlib.pyplot as plt 
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
+from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold, learning_curve
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve
 
-#Load the dataset
 filePath = 'processed_dataset.csv'
 dfCleaning = pd.read_csv(filePath)
 
-#Define features and target
 X = dfCleaning.drop(columns=['aggregateRating/ratingValue'])
 y = dfCleaning['aggregateRating/ratingValue']
 
-#Scale the features
 scaler = StandardScaler()
 X = scaler.fit_transform(X)
 
-#Define hyperparameters grid for Random Forest
 params = {
-    'n_estimators':[200, 300, 400, 500, 600],
+    'n_estimators': [400, 500, 600],
     'max_depth': [20, 30, 35, 40, 50, 60],
     'min_samples_split': [2, 5, 10],
     'min_samples_leaf': [1, 2, 4, 6],
     'max_features': ['auto', 'sqrt', 'log2']
 }
 
-#Split the data into training and testing sets
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=1, stratify=y)
 
-#Set up cross-validation
-kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-rf_model = RandomForestClassifier(random_state=42, oob_score=True)
-gridRf_model = GridSearchCV(estimator=rf_model, param_grid=params, cv=kf, n_jobs=-1, verbose=2)
+rf_model = RandomForestClassifier(random_state=10, oob_score=True)
+gridRf_model = GridSearchCV(estimator=rf_model, param_grid=params, cv=StratifiedKFold(5), n_jobs=-1, verbose=2)
 
-#Train the model
 gridRf_model.fit(X_train, y_train)
 bestRF = gridRf_model.best_estimator_
 
-#Make predictions
 y_pred = bestRF.predict(X_test)
 y_pred_prob = bestRF.predict_proba(X_test)
 
-#Evaluate the model
 cm = confusion_matrix(y_test, y_pred)
 print('Confusion matrix:')
 print(cm)
@@ -76,7 +68,8 @@ plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
 plt.title('RF ROC Curve')
 plt.legend(loc='best')
-plt.show()
+plt.savefig('roc_curve.png')
+plt.close()
 
 y_test_pred = bestRF.predict(X_test)
 y_train_pred = bestRF.predict(X_train)
@@ -94,4 +87,36 @@ plt.legend(loc='upper left')
 plt.hlines(y=0, xmin=min(min(y_train_pred), min(y_test_pred)), xmax=max(max(y_train_pred), max(y_test_pred)), color='black', lw=2)
 plt.xlim([min(min(y_train_pred), min(y_test_pred)) - 0.5, max(max(y_train_pred), max(y_test_pred)) + 0.5])
 plt.tight_layout()
-plt.show()
+plt.savefig('residuals.png')
+plt.close()
+
+train_sizes, train_scores, validation_scores = learning_curve(
+    estimator=bestRF,
+    X=X,
+    y=y,
+    train_sizes=np.linspace(0.1, 1.0, 10),
+    cv=5,
+    scoring='accuracy',
+    n_jobs=-1
+)
+
+train_scores_mean = np.mean(train_scores, axis=1)
+train_scores_std = np.std(train_scores, axis=1)
+
+validation_scores_mean = np.mean(validation_scores, axis=1)
+validation_scores_std = np.std(validation_scores, axis=1)
+
+plt.figure()
+plt.plot(train_sizes, train_scores_mean, 'o-', color='r', label='Training score')
+plt.plot(train_sizes, validation_scores_mean, 'v-', color='orange', label='Validation')
+
+plt.fill_between(train_sizes, train_scores_mean - train_scores_std, train_scores_mean + train_scores_std, alpha=0.1, color='r')
+plt.fill_between(train_sizes, validation_scores_mean - validation_scores_std, validation_scores_mean + validation_scores_std, alpha=0.1, color='orange')
+
+plt.title('Learning Curve')
+plt.xlabel('Training examples')
+plt.ylabel('Score')
+plt.legend(loc='best')
+plt.grid()
+plt.savefig('learning_curve.png')
+plt.close()

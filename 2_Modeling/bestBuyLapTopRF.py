@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, learning_curve
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve
 from sklearn.pipeline import Pipeline
@@ -72,4 +72,34 @@ plt.legend(loc='upper left')
 plt.hlines(y=0.5, xmin=min(min(y_train_pred)-0.5, min(y_test_pred))-0.5, xmax=max(max(y_train_pred)+0.5, max(y_test_pred)+0.5), color='black', lw=2)
 plt.xlim([min(min(y_train_pred)-0.5, min(y_test_pred))-0.5, max(max(y_train_pred)+0.5, max(y_test_pred)+0.5)])
 plt.tight_layout()
+plt.show()
+
+train_sizes, train_scores, validation_scores = learning_curve(
+    estimator=rf_model,
+    X=X,
+    y=y,
+    train_sizes=np.linspace(0.1, 1.0, 10),
+    cv=5,
+    scoring='accuracy',
+    n_jobs=-1
+)
+
+train_scores_mean = np.mean(train_scores, axis=1)
+train_scores_std = np.std(train_scores, axis=1)
+
+validation_scores_mean = np.mean(validation_scores, axis=1)
+validation_scores_std = np.std(validation_scores, axis=1)
+
+plt.figure()
+plt.plot(train_sizes, train_scores_mean, 'o-', color='r', label='Training score')
+plt.plot(train_sizes, validation_scores_mean, 'v-', color='orange', label='Validation')
+
+plt.fill_between(train_sizes, train_scores_mean - train_scores_std, train_scores_mean + train_scores_std, alpha=0.1, color='r')
+plt.fill_between(train_sizes, validation_scores_mean - validation_scores_std, validation_scores_mean + validation_scores_std, alpha=0.1, color='orange')
+
+plt.title('Learning Curve')
+plt.xlabel('RF')
+plt.ylabel('Score')
+plt.legend(loc='best')
+plt.grid()
 plt.show()

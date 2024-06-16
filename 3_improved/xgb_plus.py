@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split, GridSearchCV, learning_curve
 from sklearn.preprocessing import LabelEncoder, label_binarize
 from xgboost import XGBClassifier
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, roc_curve, auc,roc_auc_score
@@ -10,7 +10,7 @@ data = pd.read_csv('processed_dataset.csv')
 X = data.drop('aggregateRating/ratingValue', axis=1)
 y = data['aggregateRating/ratingValue']
 
-# 編碼目標變量
+# 編碼目標變量 xbg的類別標籤需要從 0 開始
 label_encoder = LabelEncoder()
 y = label_encoder.fit_transform(y)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=1)
@@ -50,7 +50,7 @@ print("Recall：", recall)
 print("F1 Score：", f1)
 print("AUC：", roc_auc)
 
-# 繪製ROC AUC曲線
+# 繪製ROC曲線
 if hasattr(best_xgb, 'predict_proba'):
     y_probas = best_xgb.predict_proba(X_test)
     n_classes = len(label_encoder.classes_)
@@ -62,7 +62,6 @@ if hasattr(best_xgb, 'predict_proba'):
         roc_auc[i] = auc(fpr[i], tpr[i])
         plt.plot(fpr[i], tpr[i], label='ROC class {} (area = {:.2f})'.format(i, roc_auc[i]))
 
-# 繪製ROC曲線
 plt.plot([0, 1], [0, 1], 'k--')
 plt.xlim([0.0, 1.0])
 plt.ylim([0.0, 1.05])
@@ -72,6 +71,7 @@ plt.title('ROC')
 plt.legend(loc="lower right")
 plt.show()
 
+# 繪製殘差圖
 y_train_pred = best_xgb.predict(X_train)
 y_test_pred = best_xgb.predict(X_test)
 
@@ -84,4 +84,30 @@ plt.legend(loc='upper left')
 plt.hlines(y=0, xmin=min(min(y_train_pred)-0.5, min(y_test_pred))-0.5, xmax=max(max(y_train_pred)+0.5, max(y_test_pred)+0.5), color='black', lw=2)
 plt.xlim([min(min(y_train_pred)-0.5, min(y_test_pred))-0.5, max(max(y_train_pred)+0.5, max(y_test_pred)+0.5)])
 plt.tight_layout()
+plt.show()
+
+
+# 繪製學習曲線
+train_sizes, train_scores, test_scores = learning_curve(best_xgb, X, y, cv=5, scoring='accuracy', 
+                                                        n_jobs=-1, train_sizes=np.linspace(0.1, 1.0, 10))
+
+train_scores_mean = np.mean(train_scores, axis=1)
+train_scores_std = np.std(train_scores, axis=1)
+test_scores_mean = np.mean(test_scores, axis=1)
+test_scores_std = np.std(test_scores, axis=1)
+
+plt.figure(figsize=(10, 7))
+plt.plot(train_sizes, train_scores_mean, 'o-', color='r', label='Training score')
+plt.plot(train_sizes, test_scores_mean, 'o-', color='g', label='Cross-validation score')
+
+plt.fill_between(train_sizes, train_scores_mean - train_scores_std, train_scores_mean + train_scores_std,
+                  alpha=0.1, color='r')
+plt.fill_between(train_sizes, test_scores_mean - test_scores_std, test_scores_mean + test_scores_std,
+                  alpha=0.1, color='g')
+
+plt.title('Learning Curve')
+plt.xlabel('Training')
+plt.ylabel('Score')
+plt.legend(loc='best')
+plt.grid()
 plt.show()
